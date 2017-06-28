@@ -1,0 +1,235 @@
+#!/usr/bin/env python
+
+# Copyright (c) 2017 Philipp M. Scholl
+# 
+# This program is free software: you can redistribute it and/or modify  
+# it under the terms of the GNU General Public License as published by  
+# the Free Software Foundation, version 3.
+#
+# This program is distributed in the hope that it will be useful, but 
+# WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License 
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+import argparse, ffmpeginput, sys, os, numpy as np, itertools as it
+from scipy import stats, interpolate
+from detect_peaks import detect_peaks as peaks
+from shlex import split
+from os.path import basename
+from scipy.signal import butter, lfilter
+from scipy.cluster.vq import kmeans
+
+class AudioDataOnly:
+    """ selects and stores all stream information, but only for streams
+    which are of audio type.
+    """
+    def __init__(self, pos=None, blacklist=[]):
+        self.pos = pos
+        self.pos = [self.pos] if type(self.pos) is str else self.pos
+        self.blacklist  = blacklist
+
+    def __call__(self, streams):
+        pos  = lambda s: s.tags.get('POSITION') or 'none'
+        cond = lambda s: s.codec_type == 'audio' and\
+                        (self.pos is None or any(p in pos(s) for p in self.pos)) and\
+                         pos(s) not in self.blacklist
+
+        self.info = [s for s in streams if cond(s)]
+        return self.info
+
+PEAKS = lambda c: peaks(c, mph=.1*np.max(c), mpd=5, threshold=.008*max(c))
+
+def _mode(d):
+    c,v = np.histogram(d, bins=512, density=True, range=[0,2])
+    c,v = c / c.sum(), v[:-1] - np.diff(v)[0]
+
+    mode = np.argmax(c)
+    mc,mv = c[mode], v[mode]
+
+    return mv, stats.kurtosis(d, fisher=False), len(PEAKS(c))
+
+def _modality(tags):
+    """ returns a shorthand for the sensor modality in the meta-data """
+    modality = tags.get('NAME') or 'none'
+    return 'acc' if 'acc' in modality else\
+           'gyr' if 'gyr' in modality or 'rateofturn' in modality else\
+           'mag' if 'mag' in modality or 'compass' in modality else\
+           'none'
+
+def _plot(data, meta, output, title=''):
+    """ plots the histogram for each modality. Should allow to get some
+    visual insight into the different distributions for each sensor type.
+    """
+    import matplotlib.pyplot as plt,\
+           matplotlib.mlab as mlab,\
+           matplotlib as mp
+    from cycler import cycler
+
+    mp.style.use('ggplot')
+    colors = cycler(color='grey black orange red'.split())
+
+    fig = plt.figure()
+    bgcolor = '0.8'
+
+    for d,m,col in zip(data,meta,colors()):
+        label = m.tags.get('NAME') or ''
+
+        c,v = np.histogram(d, bins=512, density=True, range=[0,2])
+        c = c / c.sum()
+        p = PEAKS(c)
+
+        plt.bar(v[:-1], c, v[1]-v[0], color=col['color'],
+                zorder=3, alpha=.6, label=label)
+
+        plt.bar(v[:-1], c, v[1]-v[0], color=bgcolor,
+                zorder=2, alpha=1)
+
+        if 'gyr' not in label:
+            plt.scatter(v[p], c[p], color=col['color'], marker='+',zorder=10)
+
+        u,c=np.unique(d, return_counts=1)
+        plt.fill_between([0],0,[0],alpha=.6)
+
+    press = lambda ev: os._exit(0) if ev.key == 'q' else ''
+    resiz = lambda ev: plt.tight_layout()
+
+    fig.canvas.mpl_connect('key_press_event', press)
+    fig.canvas.mpl_connect('resize_event', resiz)
+
+    fig.canvas.set_window_title(title)
+    #plt.ylabel('probability')
+    plt.xlabel('sensor value (standardized)')
+    plt.gca().patch.set_facecolor(bgcolor)
+    plt.gca().yaxis.grid(True, color='w', linestyle='-', linewidth=1, zorder=0)
+    #plt.gca().spines['top'].set_visible(False)
+    #plt.gca().spines['right'].set_visible(False)
+    #plt.gca().spines['left'].set_linewidth(2)
+    #plt.gca().spines['bottom'].set_linewidth(2)
+    plt.gca().tick_params(width=2)
+    plt.gca().xaxis.set_label_position("top")
+    plt.gca().yaxis.set_label_position("right")
+    plt.legend(loc='upper right')
+    plt.tick_params('x', bottom=0, top=1,
+               labelbottom=0, labeltop=1)
+    plt.tick_params('y', left=0,      right=0,
+                    labelleft=0, labelright=0)
+    plt.ylim(-.01,0.4)
+    plt.xlim(-.05,2.05)
+
+    if len(output):
+        plt.savefig(output, transparent=True, frameon=False, box_inches='tight')
+    else:
+        plt.show()
+
+def lowpass(data, cutoff, fs, order=5):
+    normal_cutoff = cutoff / (.5 * fs)
+    b,a = butter(order, normal_cutoff, btype='low', analog=False)
+    return [ lfilter(b, a, d[~np.isnan(d)])[int(fs/cutoff):] for d in data.T ]
+
+#
+# some streams from the test-set are blacklisted, as the recording
+# did not properly work and would give false negative results
+#
+BLACKLIST = {
+    'session_10_gerald_3.mkv'   : ['left hand'],
+    'session_10_gerald_6.mkv'   : ['left lower arm'],
+    'session_12_matthias_2.mkv' : ['left hand'],
+    'session_12_matthias_5.mkv' : ['left hand'],
+    'session_11_tobi_1.mkv'     : ['right hand', 'left lower arm',
+                                   'left upper arm', 'right lower arm',
+                                   'right upper arm', 'back'],
+    'session_11_tobi_5.mkv'     : ['right hand'],
+    'session_12_matthias_6.mkv' : ['right upper arm (up]' ,'right upper arm (down)',
+                                   'left wrist','right wrist','left hand',
+                                   'left upper arm (up)','left upper arm (down)'],
+    'mHealth_subject6.mkv'      : ['right lower arm'], # mag failure at the end
+    'S17_Brownie.mkv'           : ['left arm'], # acc looks interpolated
+    'S17_Brownie.mkv'           : ['left arm'], # acc looks interpolated
+    'S22_Brownie.mkv'           : ['left arm'], # acc looks interpolated
+}
+
+
+
+def _classify2(mode, peakdiff):
+    return 'gyr' if mode < .54      else\
+           'acc' if peakdiff >=  .5 else\
+           'mag' if peakdiff <= -.5 else\
+           'none'
+
+def _classify(mode, kurtosis):
+    return 'gyr' if mode < .54     else\
+           'acc' if kurtosis >= 42 else\
+           'mag' if kurtosis <= 4. else\
+           'none'
+
+if __name__ == '__main__':
+    args = argparse.ArgumentParser('identify inertial sensor datastreams')
+    args.add_argument('-v', '--visual', help='plot distributions',
+         const='', default=None, type=str, nargs='?', action='store')
+    args.add_argument('-p', '--position', help='limit stream to position TAG',
+         default=None, type=str)
+    args.add_argument('-d', '--debug', help='print in debug format',
+            action='store_true')
+    args.add_argument('FILE', type=str)
+    args = args.parse_args()
+
+    #
+    # load audio streams from supplied ffmpeg input file, note that we can
+    # do the lowpass filtering with ffmpeg as the stream might contain NaNs
+    # which lead to the filtered stream being filled up with NaNs as well
+    #
+    ign  = BLACKLIST.get(basename(args.FILE)) or []
+    meta = AudioDataOnly(pos=args.position, blacklist=ign)
+    data = ffmpeginput.input([args.FILE], select=meta)
+
+    #
+    # extract magnitude, filter NaNs, standardize
+    #
+    filt = [ lowpass(s, 2, float(i.sample_rate)) for (s, i) in zip(data,meta.info) ]
+    norm = ( np.linalg.norm(d, 2, axis=0) for d in filt )
+    nnan = ( stream[~np.isnan(stream)] for stream in norm )
+    data = [ stream / np.mean(stream) for stream in nnan ]
+
+    #
+    # prepare to calculate the mean kurtosis for each position
+    # to decide between acc and mag
+    #
+    POS  = [ s.tags.get('POSITION', '') for s in meta.info ]
+    mean = lambda data,info,pos,j: np.mean(\
+            [ d[j] for (d,i) in zip(data,info) if\
+              i.tags.get('POSITION','') == pos and d[0] > .54 ])
+
+    #
+    # calculate mode (value, count) and kurtosis for each stream
+    #
+    features = [ _mode(d) for d in data ]
+    meanpeak = { pos : mean(features,meta.info,pos,2) for pos in POS }
+    features = np.asarray([ (m,p,meanpeak[pos]-p,k) for\
+               ((m,k,p),pos) in zip(features,POS) ])
+
+    #
+    # print the result and some additional information
+    #
+    for ((v,p,mp,k), m) in zip(features, meta.info):
+        if args.debug:
+            s = '{}\t{}\t{}\t{: 9.3f}\t{: 9.5f}\t{: 9.5f}\t{: 9.5f}\t"{}"\t"{}"'.format(
+            _modality(m.tags),
+            _classify(v,k),
+            _classify2(v,mp),
+            v,p,mp,k,
+            args.FILE,
+            m.tags.get('POSITION') or 'none')
+
+        else:
+            s = _classify2(v,mp)
+
+        print(s)
+
+    #
+    # optionally plot the distribution if the user asked for it
+    #
+    if args.visual is not None:
+        _plot(data, meta.info, args.visual, 'Figure %s'%args.FILE)

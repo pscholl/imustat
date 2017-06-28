@@ -1,0 +1,88 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+import matplotlib as mp, os, sys, fileinput, numpy as np
+from matplotlib import pyplot as plt
+mp.style.use('ggplot')
+
+def plot_first(fig, data, type, info, sets):
+    ya,yb = -18.6, 14.9
+    xa,xb = .55, 1.55
+    info,sets = np.asarray(info),np.asarray(sets)
+    markers = dict( zip(sorted(set(sets)), '.*x+^') )
+    assert (len(list(set(sets))) == 5)
+
+    acc = [ 'acc' in t for t in type ]
+    gyr = [ 'gyr' in t for t in type ]
+    mag = [ 'mag' in t for t in type ]
+
+    for k,m in markers.items():
+        marker = sets == k
+        plt.scatter(data[0,acc & marker], data[1,acc & marker], c='grey',
+                    label='acc ' + k, marker=m, alpha=.5, picker=True)\
+           .info = info[acc & marker]
+
+        plt.scatter([],[], c='black',
+                    label='gyr ' + k, marker=m, alpha=.5, picker=True)\
+           .info = info[gyr & marker]
+
+        plt.scatter(data[0,mag & marker], data[1,mag & marker], c='orange',
+                    label='mag ' + k, marker=m, alpha=.5, picker=True)\
+           .info = info[mag & marker]
+
+    plt.fill_between([xa, xb], [ya]*2, [-.4]*2,\
+                     color='orange',alpha=.2, zorder=-1)
+    plt.fill_between([xa, xb], [.4]*2, [yb]*2,\
+                     color='grey',alpha=.2, zorder=-1)
+
+    plt.tick_params('x', bottom=0, top=1,
+               labelbottom=0, labeltop=1)
+    plt.tick_params('y', left=0,      right=1,
+                    labelleft=0, labelright=1)
+    plt.yscale('symlog', linthreshy=10)
+    plt.legend(loc='upper left')
+    plt.xlim((xa,xb))
+    plt.ylim((ya,yb))
+    plt.gca().yaxis.set_label_position('right')
+    plt.ylabel('cardinality / pairwise difference of peak count')
+    plt.gca().xaxis.set_label_position('top')
+    plt.xlabel('mode / most common value')
+    plt.tight_layout()
+
+    handles, labels = plt.gca().get_legend_handles_labels()
+    hmod, lmod = handles[:3], 'acc gyr mag'.split()
+    hdta, ldta = handles[1::3], markers.keys()
+
+    #l0 = plt.legend(hdta, ldta, loc='lower left')
+    plt.legend(hmod, lmod, loc='upper right')
+    #plt.gca().add_artist(l0)
+
+def runandprint(fname, pos):
+    from subprocess import Popen
+    from shlex import split
+    fname = split(fname)[0]
+    pos = split(pos)[0]
+
+    print(fname, pos)
+    Popen(['./id', fname, '-v', '-p', pos])
+
+if __name__ == '__main__':
+    data = [ line.split('\t') for line in fileinput.input() ]
+    data = [ item for item in data if item[0] in 'acc gyr mag'.split() ]
+    type = [ t for (t,*_) in data ]
+    sets = [ os.path.split(os.path.split(p)[0])[1].split('-')[0] for (*_,p,_) in data ]
+    info = [ (fname, position) for (*_,fname,position) in data ]
+    data = [ (float(mode), float(pairpeak)) for\
+            (_,_,_,mode,peak,pairpeak,kurtosis,*_) in data ]
+    data = np.asarray(data).T
+
+    exit = lambda ev: os._exit(0) if ev.key == 'q' else ''
+    meta = lambda ev: runandprint( *ev.artist.info[ev.ind[0]] )
+
+    plot_first(plt.figure(0), data, type, info, sets)
+
+    plt.figure(0).canvas.mpl_connect('key_press_event', exit)
+    plt.figure(0).canvas.mpl_connect('pick_event', meta)
+
+    plt.show()
+
