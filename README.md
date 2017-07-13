@@ -42,6 +42,10 @@ mag
 none
 ```
 
+## Requirements
+
+ This software requires a recent version of ffmpeg, numpy, matplotlib and scipy. For I/O the [ffmpeginput](github.com/pscholl/ffmpeginput) module is required.
+
 ## Caveats
 
  The only tested input format are .mkv file at the moment. Should the
