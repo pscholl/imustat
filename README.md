@@ -50,8 +50,7 @@ none
 
  The only tested input format are .mkv file at the moment. Should the
 identified sensor type not match your exception, then please check whether your
-data recording was interpolated with non-NaN values
-
+data recording was interpolated with non-NaN values.
 
 [1]: Philipp M. Scholl, Kristof van Laerhoven - "On The Statistical Properties
      of Body-Worn Inertial Motion Data" in Internatiol Symposium on Wearable
