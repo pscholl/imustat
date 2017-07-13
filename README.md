@@ -46,25 +46,7 @@ none
 
  The only tested input format are .mkv file at the moment. Should the
 identified sensor type not match your exception, then please check whether your
-data recording was interpolated with non-NaN values.
-
-## Data Cleaning
-
- The following streams were removed prior to evaluation, since the senosr has
-failed recording for more than 90% of the time:
-
- /home/phil/es/datasets/opportunity-2013/session_10_gerald_3.mkv  0:10 'left hand'
- /home/phil/es/datasets/opportunity-2013/session_12_matthias_5.mkv 0:9 'left hand'
- /home/phil/es/datasets/opportunity-2013/session_12_matthias_2.mkv 0:9 'left hand'
- /home/phil/es/datasets/opportunity-2013/session_11_tobi_5.mkv     0:4 'right hand'
- /home/phil/es/datasets/opportunity-2013/session_11_tobi_1.mkv     0:4 'right hand'
- /home/phil/es/datasets/opportunity-2013/session_12_matthias_6.mkv 0:3 'right upper arm (up)'
- /home/phil/es/datasets/opportunity-2013/session_12_matthias_6.mkv 0:4 'right upper arm (down)'
- /home/phil/es/datasets/opportunity-2013/session_12_matthias_6.mkv 0:6 'left wrist'
- /home/phil/es/datasets/opportunity-2013/session_12_matthias_6.mkv 0:7 'right wrist'
- /home/phil/es/datasets/opportunity-2013/session_12_matthias_6.mkv 0:9 'left hand'
- /home/phil/es/datasets/opportunity-2013/session_12_matthias_6.mkv 0:11 'left upper arm (up)'
- /home/phil/es/datasets/opportunity-2013/session_12_matthias_6.mkv 0:12 'left upper arm (down)'
+data recording was interpolated with non-NaN values
 
 
 [1]: Philipp M. Scholl, Kristof van Laerhoven - "On The Statistical Properties
