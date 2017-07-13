@@ -5,6 +5,11 @@ imuestat - classify inertial data stream by statistical properties
 [1], as well as the extracted feature in a CSV file. It's purpose is to allow
 easy reproduction of the mentioned results.
 
+## Results
+
+ The results of the run as described in the paper can be found in the 'results'
+file.
+
 ## Usage
 
  The imustat script can be used to classify streams and extract the features.
