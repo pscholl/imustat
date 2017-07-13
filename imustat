@@ -34,6 +34,7 @@ class AudioDataOnly:
     def __call__(self, streams):
         pos  = lambda s: s.tags.get('POSITION') or 'none'
         cond = lambda s: s.codec_type == 'audio' and\
+                        _modality(s.tags) != 'none' and\
                          s.sample_rate != '32' and\
                          s.sample_rate != '62' and\
                         (self.pos is None or any(p in pos(s) for p in self.pos)) and\
